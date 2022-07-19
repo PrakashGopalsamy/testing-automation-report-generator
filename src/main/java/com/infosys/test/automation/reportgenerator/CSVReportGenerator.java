@@ -2,6 +2,10 @@ package com.infosys.test.automation.reportgenerator;
 
 import com.infosys.test.automation.constants.TestResultConstants;
 
+import com.infosys.test.automation.reportgenerator.exceptions.FolderCreationException;
+import com.infosys.test.automation.reportgenerator.exceptions.ReportCreationException;
+import com.infosys.test.automation.reportgenerator.exceptions.ReportWriteException;
+import com.infosys.test.automation.reportgenerator.exceptions.TestResultsParseException;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -24,24 +28,38 @@ public class CSVReportGenerator implements ReportGenerator{
     }
 
     @Override
-    public boolean generateReport(String testName, String reportFolder, String testResult) throws IOException, ParseException {
+    public boolean generateReport(String testName, String reportFolder, String testResult) throws FolderCreationException, TestResultsParseException, ReportWriteException, ReportCreationException {
         File reportFile = createReportFile(testName,reportFolder);
         writeReport(reportFile,testResult);
         return false;
     }
 
-    private boolean writeReport(File reportFile,String testResult) throws IOException, ParseException {
-        FileWriter reportWriter = new FileWriter(reportFile);
+    private boolean writeReport(File reportFile,String testResult) throws TestResultsParseException, ReportCreationException, ReportWriteException {
+        FileWriter reportWriter = null;
+        try {
+            reportWriter = new FileWriter(reportFile);
+        } catch (IOException e){
+            throw new ReportCreationException("Not able to create test report due to the exception : "+e.getMessage());
+        }
         JSONParser jsonParser = new JSONParser();
-        JSONObject testResObj = (JSONObject)jsonParser.parse(testResult);
-        writeHeader(reportWriter);
-        writeReport(testResObj,reportWriter);
-        reportWriter.flush();
-        reportWriter.close();
+        JSONObject testResObj = null;
+        try {
+            testResObj = (JSONObject)jsonParser.parse(testResult);
+        } catch (ParseException e) {
+            throw new TestResultsParseException("Not able to parse test results due to the exception : "+e.getMessage());
+        }
+        try {
+            writeHeader(reportWriter);
+            writeReport(testResObj,reportWriter);
+            reportWriter.flush();
+            reportWriter.close();
+        } catch (IOException e) {
+            throw new ReportWriteException("Not able to write test result to test report due to the exception : "+e.getMessage());
+        }
         return true;
     }
 
-    private void writeReport(JSONObject testResObj, FileWriter reportWriter) throws IOException{
+    private void writeReport(JSONObject testResObj, FileWriter reportWriter) {
         JSONArray testResults = (JSONArray) testResObj.get(TestResultConstants.TESTRESULTS);
         AtomicInteger testDataPos = new AtomicInteger(0);
         testResults.forEach(testResult-> {
@@ -81,16 +99,20 @@ public class CSVReportGenerator implements ReportGenerator{
         reportWriter.flush();
     }
 
-    private File createReportFile(String testName,String reportFolder) throws IOException {
+    private File createReportFile(String testName,String reportFolder) throws FolderCreationException {
         String reportFileName = createFileName(testName);
         if (!checkFolder(reportFolder)){
-            createFolder(reportFolder);
+            try {
+                createFolder(reportFolder);
+            } catch (SecurityException e){
+                 throw new FolderCreationException("Not able to create the report folder due to the exception : "+e.getMessage());
+            }
         }
         if (checkFolder(reportFolder)){
             String reportQualifiedPath = reportFolder+"\\"+reportFileName;
             return new File(reportQualifiedPath);
         } else{
-            throw new IOException("Not able to create report folder: "+reportFolder);
+            throw new FolderCreationException("Not able to create report folder : "+reportFolder);
         }
     }
 
@@ -99,7 +121,7 @@ public class CSVReportGenerator implements ReportGenerator{
         return folder.exists();
     }
 
-    private boolean createFolder(String reportFolder){
+    private boolean createFolder(String reportFolder) throws SecurityException{
         File folder = new File(reportFolder);
         return folder.mkdirs();
     }
